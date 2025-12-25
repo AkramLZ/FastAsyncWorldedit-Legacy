@@ -1,135 +1,144 @@
-buildscript {
-    repositories {
-        mavenCentral()
-        maven { url = "https://oss.sonatype.org/content/repositories/snapshots/" }
-        jcenter()
-    }
-	dependencies {
-        classpath 'com.github.jengelman.gradle.plugins:shadow:1.2.3'
-        classpath 'org.ajoberstar:grgit:1.7.0'
-    }
-    configurations.all {
-        resolutionStrategy {
-            force 'org.ow2.asm:asm:6.0_BETA'
-        }
-    }
+plugins {
+    id 'java'
+    id 'maven-publish'
+    id 'idea'
+    id 'eclipse'
+    id 'com.github.johnrengelman.shadow' version '8.1.1'
+    id 'org.ajoberstar.grgit' version '5.2.0'
 }
-
-task setupCIWorkspace {
-    // do nothing, stub method
-}
-
-apply plugin: 'java'
-clean { delete "target" }
 
 group = 'com.boydti.fawe'
+description = 'FastAsyncWorldEdit'
 
-def revision = ""
-def buildNumber = ""
-def semver = ""
-def date = ""
-ext {
-    try {
-        git = org.ajoberstar.grgit.Grgit.open(file(".git"))
-        date = git.head().date.format("yy.MM.dd")
-        revision = "-${git.head().abbreviatedId}"
-        parents = git.head().parentIds;
-        index = -67;  // Offset to match CI
-        int major, minor, patch;
-        major = minor = patch = 0;
-        for (; parents != null && !parents.isEmpty(); index++) {
-            int majorCount, minorCount, patchCount;
-            patchCount = minor == 0 && major == 0 ? 1 : 0;
-            commit = git.getResolve().toCommit(parents.get(0));
-            for (String line : commit.fullMessage.tokenize("\n")) {
-                switch (line.replaceAll("- ", "").split(" ")[0].toLowerCase()) {
-                    case "minor":
-                    case "added":
-                    case "add":
-                    case "change":
-                    case "changed":
-                    case "changes":
-                        if (major == 0) {
-                            minorCount = 1; patchCount = 0;
-                        }
-                        break;
-                    case "refactor":
-                    case "remove":
-                    case "major":
-                        patchCount = minorCount = 0;
-                        majorCount = 1;
-                        break;
-                }
-            }
-            major += majorCount;
-            minor += minorCount;
-            patch += patchCount;
-            parents = commit.getParentIds()
-        }
-        buildNumber = "-${index}"
-        semver = "-${major}.${minor}.${patch}"
-    } catch (Throwable ignore) {
-        revision = "unknown";
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(8)
     }
 }
 
-version = date + revision + buildNumber + semver
-if ( project.hasProperty("lzNoVersion") ) { // gradle build -PlzNoVersion
+clean {
+    delete layout.buildDirectory
+}
+
+repositories {
+    mavenCentral()
+    mavenLocal()
+    maven { url = uri("https://oss.sonatype.org/content/repositories/snapshots/") }
+    maven { url = uri("https://repo.dmulloy2.net/content/groups/public/") }
+    maven { url = uri("https://repo.destroystokyo.com/repository/maven-public/") }
+    maven { url = uri("https://ci.athion.net/plugin/repository/tools/") }
+    maven { url = uri("https://hub.spigotmc.org/nexus/content/groups/public/") }
+    maven { url = uri("https://maven.enginehub.org/repo/") }
+    maven { url = uri("https://repo.spongepowered.org/maven") }
+    maven { url = uri("https://repo.inventivetalent.org/content/groups/public/") }
+    maven { url = uri("https://store.ttyh.ru/libraries/") }
+    maven { url = uri("https://maven.elmakers.com/repository/") }
+    maven { url = uri("https://ci.ender.zone/plugin/repository/everything/") }
+    maven { url = uri("https://plotsquared.com/mvn/") }
+}
+
+configurations.configureEach {
+    resolutionStrategy {
+        force("org.ow2.asm:asm:6.0_BETA")
+    }
+}
+
+ext {
+    revision = "unknown"
+    buildNumber = ""
+    semver = ""
+    date = ""
+}
+
+try {
+    def git = org.ajoberstar.grgit.Grgit.open(dir: rootDir)
+    date = git.head().date.format("yy.MM.dd")
+    revision = "-${git.head().abbreviatedId}"
+
+    def parents = git.head().parentIds
+    int index = -67
+    int major = 0, minor = 0, patch = 0
+
+    while (parents != null && !parents.isEmpty()) {
+        def commit = git.resolve.toCommit(parents[0])
+        int majorCount = 0, minorCount = 0, patchCount = (major == 0 && minor == 0) ? 1 : 0
+
+        commit.fullMessage.eachLine { line ->
+            switch (line.replace("- ", "").split(" ")[0].toLowerCase()) {
+                case ["minor", "added", "add", "change", "changed", "changes"]:
+                    if (major == 0) {
+                        minorCount = 1
+                        patchCount = 0
+                    }
+                    break
+                case ["refactor", "remove", "major"]:
+                    majorCount = 1
+                    minorCount = 0
+                    patchCount = 0
+                    break
+            }
+        }
+
+        major += majorCount
+        minor += minorCount
+        patch += patchCount
+
+        parents = commit.parentIds
+        index++
+    }
+
+    buildNumber = "-${index}"
+    semver = "-${major}.${minor}.${patch}"
+} catch (var ignored) {
+    revision = "unknown"
+}
+
+version = "${date}${revision}${buildNumber}${semver}"
+if (project.hasProperty("lzNoVersion")) {
     version = "unknown"
 }
-description = """FastAsyncWorldEdit"""
 
 subprojects {
-
     apply plugin: 'java'
-    apply plugin: 'maven'
-    apply plugin: 'eclipse'
     apply plugin: 'idea'
+    apply plugin: 'eclipse'
 
-    sourceCompatibility = 1.8
-    targetCompatibility = 1.8
-
-    compileJava {
-        options.compilerArgs += ["-parameters"]
+    java {
+        toolchain {
+            languageVersion = JavaLanguageVersion.of(8)
+        }
     }
 
-    repositories {
-        maven {url "https://mvnrepository.com/artifact/"}
-        mavenCentral()
-        maven {url "https://repo.dmulloy2.net/content/groups/public/"}
-        maven {url "https://repo.destroystokyo.com/repository/maven-public//"}
-        //maven {url "https://ci.emc.gs/nexus/content/groups/aikar/" }
-        maven {url "https://ci.athion.net/plugin/repository/tools/"}
-        mavenLocal()
-        maven {url "https://hub.spigotmc.org/nexus/content/groups/public/"}
-        maven {url "https://maven.enginehub.org/repo/"}
-        maven {url "https://repo.maven.apache.org/maven2"}
-        maven {url "https://ci.frostcast.net/plugin/repository/everything"}
-        maven {url "https://repo.spongepowered.org/maven"}
-        maven {url "https://dl.bintray.com/tastybento/maven-repo"}
-        maven {url "https://repo.inventivetalent.org/content/groups/public/"}
-        maven {url "https://store.ttyh.ru/libraries/"}
-        maven {url "https://repo.dmulloy2.net/nexus/repository/public/"}
-        maven {url "https://maven.elmakers.com/repository/"}
-        maven {url "https://ci.ender.zone/plugin/repository/everything/"}
-        maven {url "https://plotsquared.com/mvn/"}
+    tasks.withType(JavaCompile).configureEach {
+        options.compilerArgs += ['-parameters']
     }
 }
-task aggregatedJavadocs(type: Javadoc, description: 'Generate javadocs from all child projects as if it was a single project', group: 'Documentation') {
-    destinationDir = file("./docs/javadoc")
-    title = "$project.name $version API"
-    options.author true
-    options.links 'https://docs.spring.io/spring/docs/4.3.x/javadoc-api/', 'https://docs.oracle.com/javase/8/docs/api/', 'https://docs.spring.io/spring-ws/docs/2.3.0.RELEASE/api/', 'https://docs.spring.io/spring-security/site/docs/4.0.4.RELEASE/apidocs/'
-    options.addStringOption('Xdoclint:none', '-quiet')
 
-    delete "./docs"
+tasks.register('aggregatedJavadocs', Javadoc) {
+    group = 'documentation'
+    description = 'Generate javadocs from all child projects'
+
+    destinationDir = file("$rootDir/docs/javadoc")
+    title = "${project.name} ${version} API"
+
+    options {
+        author = true
+        addStringOption('Xdoclint:none', '-quiet')
+        links(
+                'https://docs.oracle.com/javase/8/docs/api/'
+        )
+    }
+
+    doFirst {
+        delete "$rootDir/docs"
+    }
 
     subprojects.each { proj ->
-        proj.tasks.withType(Javadoc).each { javadocTask ->
-            source += javadocTask.source
-            classpath += javadocTask.classpath
-            excludes += javadocTask.excludes
-            includes += javadocTask.includes
+        proj.tasks.withType(Javadoc).configureEach {
+            source += it.source
+            classpath += it.classpath
+            includes += it.includes
+            excludes += it.excludes
         }
     }
 }
